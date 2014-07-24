@@ -17,6 +17,10 @@
  */
 package org.jboss.msc.txn;
 
+import java.util.Collection;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.jboss.msc._private.MSCLogger;
 import org.jboss.msc.service.Service;
 import org.jboss.msc.service.ServiceBuilder;
@@ -26,9 +30,6 @@ import org.jboss.msc.service.ServiceRegistry;
 import org.jboss.msc.service.StartContext;
 import org.jboss.msc.service.StopContext;
 import org.jboss.msc.txn.Problem.Severity;
-
-import java.util.Collection;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Task that starts service.
@@ -46,6 +47,8 @@ final class StartServiceTask<T> implements Executable<T>, Revertible {
         }
 
     });
+
+    private static final AtomicInteger serviceStartingCount = new AtomicInteger();
 
     /**
      * Creates a start service task.
@@ -75,15 +78,19 @@ final class StartServiceTask<T> implements Executable<T>, Revertible {
         transaction.getAttachment(START_TASKS).put(serviceController, revertStartTask);
 
         // notify service is starting
-        taskFactory.newTask(new Executable<Void>() {
-            public void execute(ExecuteContext<Void> executeContext) {
-                try {
-                    serviceController.notifyServiceStarting(transaction, executeContext, start);
-                } finally {
-                    executeContext.complete();
+        // temporary: just testing if this improves performance
+        if (serviceStartingCount.incrementAndGet() > 50) {// pick any number you want to test
+            serviceStartingCount.set(0);
+            taskFactory.newTask(new Executable<Void>() {
+                public void execute(ExecuteContext<Void> executeContext) {
+                    try {
+                        serviceController.notifyServiceStarting(transaction, executeContext, start);
+                    } finally {
+                        executeContext.complete();
+                    }
                 }
-            }
-        }).release();
+            }).release();
+        } else serviceController.notifyServiceStarting(transaction, taskFactory, start);
 
         return start;
     }
